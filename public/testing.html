@@ -1,0 +1,243 @@
+<html>
+
+<head>
+    <title>Test</title>
+    <meta charset="UTF-8">
+    <script src="//code.jquery.com/jquery-3.3.1.min.js"></script>
+    <style>
+        .spinner {
+            display: none;
+            width: 40px;
+            height: 40px;
+
+            position: relative;
+            margin: 20px auto;
+        }
+
+        .double-bounce1,
+        .double-bounce2 {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-color: #333;
+            opacity: 0.6;
+            position: absolute;
+            top: 0;
+            left: 0;
+
+            -webkit-animation: sk-bounce 2.0s infinite ease-in-out;
+            animation: sk-bounce 2.0s infinite ease-in-out;
+        }
+
+        .double-bounce2 {
+            -webkit-animation-delay: -1.0s;
+            animation-delay: -1.0s;
+        }
+
+        @-webkit-keyframes sk-bounce {
+            0%,
+            100% {
+                -webkit-transform: scale(0.0)
+            }
+            50% {
+                -webkit-transform: scale(1.0)
+            }
+        }
+
+        @keyframes sk-bounce {
+            0%,
+            100% {
+                transform: scale(0.0);
+                -webkit-transform: scale(0.0);
+            }
+            50% {
+                transform: scale(1.0);
+                -webkit-transform: scale(1.0);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <script>
+
+        /**
+         * Facebook App ID
+         *
+         * @var string
+         */
+        var facebook_app_id = '2036765796564559';
+
+        /**
+         * Facebook API version
+         *
+         * @var string
+         */
+        var facebook_api_version = 'v2.12';
+
+        /**
+         * URL to redirect to on succesful Facebook sign in.
+         *
+         * @var string
+         */
+        var success_url = '';
+
+        /**
+         * URL of API endpoint that will trigger bounty confirmation 
+         * email to be sent.
+         *
+         * @var string
+         */
+        var bounty_confirm_email_url = 'https://valutobounty.local/api/v1/new';
+
+        window.fbAsyncInit = function () {
+
+            FB.init({
+                appId: facebook_app_id,
+                cookie: true,
+                xfbml: true,
+                version: facebook_api_version
+            });
+
+            FB.AppEvents.logPageView();
+
+        };
+
+        (function (d, s, id) {
+            var js, fjs = d.getElementsByTagName(s)[0];
+            if (d.getElementById(id)) { return; }
+            js = d.createElement(s); js.id = id;
+            js.src = "https://connect.facebook.net/en_US/sdk.js";
+            fjs.parentNode.insertBefore(js, fjs);
+        }(document, 'script', 'facebook-jssdk'));
+
+        /**
+         * Check login state (facebook callback).
+         */
+        function checkLoginState() {
+            console.log('checkLoginState');
+
+            $('.spinner').fadeIn();
+
+            FB.getLoginStatus(function (response) {
+                statusChangeCallback(response);
+            });
+        }
+
+        function statusChangeCallback(response) {
+            console.log('statusChangeCallback');
+            console.log(response);
+            // The response object is returned with a status field that lets the
+            // app know the current login status of the person.
+            // Full docs on the response object can be found in the documentation
+            // for FB.getLoginStatus().
+            if (response.status === 'connected') {
+                // Logged into your app and Facebook.
+                testAPI(response.authResponse.accessToken);
+            } else {
+                // The person is not logged into your app or we are unable to tell.
+                $('.facebook-status').html('Please try again.');
+                $('.spinner').fadeOut();
+
+            }
+        }
+
+        /**
+         * Test that the obtained access token grants access to user email.
+         *
+         * @param string accessToken
+         */
+        function testAPI(accessToken) {
+
+            console.log('testAPI');
+
+            var jqxhr = $.get('//graph.facebook.com/' + facebook_api_version + '/me?fields=id,first_name,last_name,email&access_token=' + accessToken, function (data) {
+
+                if (typeof data.email !== 'undefined' && validateEmail(data.email)) {
+                    bountyApiTrigger(accessToken, data.email);
+                } else {
+                    $('.facebook-status').html('We were unable to retrieve your email address. Please check that your Facebook account is verified and try again.');
+                    $('.spinner').fadeOut();
+                }
+            })
+            .fail(function () {
+                showError();
+            });
+
+        }
+
+        /**
+         * Call endpoint that will trigger bounty email confirmation link.
+         *
+         * @param string accessToken
+         * @param string email
+         */
+        function bountyApiTrigger(accessToken, email) {
+
+            console.log('bountyApiTrigger');
+
+            var jqxhr = $.post(bounty_confirm_email_url, {
+                'facebook_access_token': accessToken,
+                'email': email,
+            }, function (data) {
+
+                console.log('bounty api response', data);
+                
+                if (typeof data.success !== 'undefined') {
+                    //$('.facebook-status').html(data.success);
+                    //$('.spinner').fadeOut();
+                    window.location.href = data.redirect;
+                } else {
+                    showError(data);
+                }
+            })
+            .fail(function (data) {
+                showError(data);
+            });
+        }
+
+        /**
+         * Show error with additional info from data object.
+         *
+         * @param object data
+         */
+        function showError(data) {
+
+            var errorMessage = 'Please try again.';
+
+            if (typeof data.responseJSON.error !== 'undefined') {
+                errorMessage = data.responseJSON.error;
+            }
+
+            $('.facebook-status').html(errorMessage);
+            $('.spinner').fadeOut();
+        }
+
+        /**
+         * Validate email is correct format.
+         *
+         * @param string email
+         */
+        function validateEmail(email) {
+
+            if (email.length === 0) {
+                return false;
+            }
+
+            var emailReg = /^([\w-\.]+@([\w-]+\.)+[\w-]{2,63})?$/;
+            return emailReg.test(email);
+        }
+
+    </script>
+
+    <fb:login-button scope="public_profile,email" data-size="large" data-button-type="continue_with" onlogin="checkLoginState();"></fb:login-button>
+
+    <div class="facebook-status"></div>
+    <div class="spinner">
+        <div class="double-bounce1"></div>
+        <div class="double-bounce2"></div>
+    </div>
+
+</body>
+
+</html>
